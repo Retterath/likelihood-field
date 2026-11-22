@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Likelihood field on an 8 × 8 grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8ECF0; --surface:#F6F8FA; --ink:#17202A; --muted:#566370; --line:#C3CCD5;
+  --accent:#2B57B5; --accent-ink:#FFFFFF; --row-off:#8A96A2;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161C; --surface:#19212A; --ink:#E3E8ED; --muted:#98A4B0; --line:#2E3946;
+    --accent:#86A7EF; --accent-ink:#0E1620; --row-off:#5F6B77;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161C; --surface:#19212A; --ink:#E3E8ED; --muted:#98A4B0; --line:#2E3946;
+  --accent:#86A7EF; --accent-ink:#0E1620; --row-off:#5F6B77;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:15px; line-height:1.45;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:28px 20px 40px}
+header h1{font-weight:600; font-size:1.65rem; letter-spacing:-0.01em; margin:0 0 6px}
+header p{
+  font-family:"Newsreader",Georgia,"Times New Roman",serif; font-size:1.08rem; line-height:1.55;
+  color:var(--muted); margin:0; max-width:68ch;
+}
+.layout{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(320px,1fr); gap:28px; margin-top:24px; align-items:start}
+@media (max-width:880px){ .layout{grid-template-columns:1fr} }
+
+.plot{background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:14px}
+#canvasBox{width:100%; position:relative}
+canvas{display:block; width:100%; touch-action:manipulation; cursor:crosshair}
+.under{display:flex; flex-wrap:wrap; gap:6px 18px; justify-content:space-between; margin-top:10px; font-size:0.86rem; color:var(--muted)}
+.scale{display:flex; align-items:center; gap:8px}
+.bar{width:140px; height:10px; border-radius:2px;
+  background:linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725)}
+#hover{font-variant-numeric:tabular-nums}
+
+.panel{display:flex; flex-direction:column; gap:22px}
+.panel h2{font-size:1rem; font-weight:600; margin:0 0 8px}
+.note{
+  font-family:"Newsreader",Georgia,serif; font-size:1rem; line-height:1.55;
+  margin:0; color:var(--ink); max-width:62ch;
+}
+.sliders{display:grid; gap:12px}
+.sliders label{display:grid; grid-template-columns:7.5em 1fr 4.2em; align-items:center; gap:10px; font-size:0.9rem}
+.sliders output{text-align:right; font-variant-numeric:tabular-nums}
+input[type=range]{width:100%; accent-color:var(--accent)}
+.fine{font-size:0.82rem; color:var(--muted); margin:2px 0 0}
+
+.tablebox{overflow-x:auto; border:1px solid var(--line); border-radius:6px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:0.88rem; font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px; text-align:right; white-space:nowrap}
+th{font-weight:500; color:var(--muted); border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:center}
+tbody tr + tr td{border-top:1px solid var(--line)}
+tr.off td.ro{color:var(--row-off)}
+td input[type=number]{
+  width:4.4em; font:inherit; padding:3px 4px; border:1px solid var(--line); border-radius:4px;
+  background:var(--bg); color:var(--ink); text-align:right;
+}
+td input[type=checkbox]{width:17px; height:17px; accent-color:var(--accent); cursor:pointer}
+.pid{font-weight:600}
+.result{border-top:2px solid var(--ink); padding-top:12px}
+.result .big{font-size:1.5rem; font-weight:600; font-variant-numeric:tabular-nums}
+.result p{margin:4px 0 0; color:var(--muted); font-size:0.88rem}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Likelihood field on an 8 × 8 grid</h1>
+    <p>Check an endpoint to project it onto the map. Its x and y decide its distance to the nearest occupied cell, which sets its score. Click a cell to make it occupied or free.</p>
+  </header>
+
+  <div class="layout">
+    <section class="plot" aria-label="Likelihood field map">
+      <div id="canvasBox"><canvas id="cv" role="img" aria-label="Heat map of the likelihood field with endpoints"></canvas></div>
+      <div class="under">
+        <span class="scale"><span>Less likely</span><span class="bar" aria-hidden="true"></span><span>More likely</span></span>
+        <span id="hover">Hover the map to read the field</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>How the field is built</h2>
+        <p class="note">Only occupied cells carry a Gaussian. An endpoint is scored by its distance to the nearest occupied cell (the nearest one wins; Gaussians aren’t added), so endpoints in open space fall to the random-noise floor.</p>
+      </div>
+
+      <div>
+        <h2>Sensor parameters</h2>
+        <div class="sliders">
+          <label><span>σ<sub>hit</sub> (m)</span><input type="range" id="sig" min="0.1" max="1.5" step="0.05" value="0.4"><output id="sigO">0.40</output></label>
+          <label><span>z<sub>hit</sub></span><input type="range" id="zh" min="0" max="1" step="0.05" value="0.9"><output id="zhO">0.90</output></label>
+        </div>
+        <p class="fine">z<sub>rand</sub> = 1 − z<sub>hit</sub>, z<sub>max</sub> = 10 m. Each endpoint scores z<sub>hit</sub>·prob(dist, σ<sub>hit</sub>) + z<sub>rand</sub>/z<sub>max</sub>.</p>
+      </div>
+
+      <div>
+        <h2>Endpoints in map coordinates</h2>
+        <div class="tablebox">
+          <table>
+            <thead><tr><th>Use</th><th>#</th><th>x (m)</th><th>y (m)</th><th>dist (m)</th><th>p(z<sub>k</sub> | x, m)</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="result">
+        <div>Scan likelihood q = ∏ p(z<sub>k</sub> | x, m), as returned in line 9 of Table 6.3</div>
+        <div class="big" id="q">–</div>
+        <p id="qNote"></p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+  const N = 8, ZMAX = 10, RES = 200;
+  const occ = new Set(["1,6","2,6","3,6","6,2","6,3","6,4","6,5","2,1","3,1"]);
+  const pts = [
+    {x:1.5, y:6.5, on:true},
+    {x:6.2, y:3.1, on:true},
+    {x:4.0, y:4.0, on:true},
+    {x:2.6, y:6.2, on:false},
+    {x:0.4, y:3.0, on:false},
+    {x:3.5, y:1.8, on:false}
+  ];
+  let sigma = 0.4, zhit = 0.9;
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const heat = document.createElement("canvas"); heat.width = RES; heat.height = RES;
+  const hctx = heat.getContext("2d");
+  const VIR = [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+
+  function vir(v){
+    v = Math.max(0, Math.min(1, v));
+    const s = v*4, i = Math.min(3, Math.floor(s)), f = s - i, a = VIR[i], b = VIR[i+1];
+    return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+  }
+  function centers(){
+    const c = [];
+    for (let cx=0; cx<N; cx++) for (let cy=0; cy<N; cy++)
+      if (occ.has(cx+","+cy)) c.push([cx+0.5, cy+0.5]);
+    return c;
+  }
+  function nearest(x, y, cs){
+    let d = Infinity, best = null;
+    for (const c of cs){ const dd = Math.hypot(x-c[0], y-c[1]); if (dd < d){ d = dd; best = c; } }
+    return {d, c:best};
+  }
+  const prob = (d, s) => Math.exp(-d*d/(2*s*s)) / (Math.sqrt(2*Math.PI)*s);
+  const lik = d => zhit*prob(d, sigma) + (1-zhit)/ZMAX;
+
+  function buildHeat(cs){
+    const img = hctx.createImageData(RES, RES);
+    for (let j=0; j<RES; j++){
+      const y = N - (j+0.5)/RES*N;
+      for (let i=0; i<RES; i++){
+        const x = (i+0.5)/RES*N;
+        const d = cs.length ? nearest(x, y, cs).d : Infinity;
+        const col = vir(Math.exp(-d*d/(2*sigma*sigma)));
+        const k = (j*RES+i)*4;
+        img.data[k]=col[0]; img.data[k+1]=col[1]; img.data[k+2]=col[2]; img.data[k+3]=255;
+      }
+    }
+    hctx.putImageData(img, 0, 0);
+  }
+
+  let W = 0, PADL = 26, PADB = 24, PADT = 8, PADR = 8, P = 0;
+  const mx = x => PADL + x/N*P, my = y => PADT + (N-y)/N*P;
+
+  function resize(){
+    const box = document.getElementById("canvasBox");
+    W = Math.max(260, box.clientWidth);
+    P = W - PADL - PADR;
+    const H = P + PADT + PADB, dpr = window.devicePixelRatio || 1;
+    cv.style.height = H + "px";
+    cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    draw();
+  }
+
+  function draw(){
+    if (!W) return;
+    const cs = centers();
+    buildHeat(cs);
+    const st = getComputedStyle(document.documentElement);
+    const muted = st.getPropertyValue("--muted").trim();
+    const surface = st.getPropertyValue("--surface").trim();
+    ctx.fillStyle = surface; ctx.fillRect(0, 0, W, P+PADT+PADB);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(heat, PADL, PADT, P, P);
+
+    // grid
+    ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1;
+    for (let k=0; k<=N; k++){
+      ctx.beginPath(); ctx.moveTo(mx(k), my(0)); ctx.lineTo(mx(k), my(N)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx(0), my(k)); ctx.lineTo(mx(N), my(k)); ctx.stroke();
+    }
+    // occupied cells
+    const c = P/N;
+    occ.forEach(key => {
+      const [cx, cy] = key.split(",").map(Number);
+      const x0 = mx(cx), y0 = my(cy+1);
+      ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, c, c); ctx.clip();
+      ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 1;
+      for (let s=-c; s<c; s+=7){ ctx.beginPath(); ctx.moveTo(x0+s, y0+c); ctx.lineTo(x0+s+c, y0); ctx.stroke(); }
+      ctx.restore();
+      ctx.strokeStyle = "#0b0f14"; ctx.lineWidth = 3; ctx.strokeRect(x0+1.5, y0+1.5, c-3, c-3);
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.2; ctx.strokeRect(x0+1.5, y0+1.5, c-3, c-3);
+    });
+    // Gaussian centroids
+    for (const g of cs){
+      ctx.beginPath(); ctx.arc(mx(g[0]), my(g[1]), 2.6, 0, Math.PI*2);
+      ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.strokeStyle = "#0b0f14"; ctx.lineWidth = 1; ctx.stroke();
+    }
+    // ticks
+    ctx.fillStyle = muted; ctx.font = "11px 'Instrument Sans', system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (let k=0; k<=N; k++) ctx.fillText(String(k), mx(k), my(0)+6);
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let k=0; k<=N; k++) ctx.fillText(String(k), PADL-6, my(k));
+
+    // endpoints
+    let q = 1, used = 0, missing = false;
+    pts.forEach((p, idx) => {
+      const n = cs.length ? nearest(p.x, p.y, cs) : {d:Infinity, c:null};
+      p.dist = n.d; p.p = lik(n.d);
+      if (!p.on) return;
+      used++; q *= p.p; if (!isFinite(n.d)) missing = true;
+      const px = mx(p.x), py = my(p.y);
+      if (n.c){
+        ctx.setLineDash([5,4]);
+        ctx.strokeStyle = "#0b0f14"; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(mx(n.c[0]), my(n.c[1])); ctx.stroke();
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.6; ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.beginPath(); ctx.arc(px, py, 9.5, 0, Math.PI*2);
+      ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.strokeStyle = "#0b0f14"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = "#0b0f14"; ctx.font = "600 11px 'Instrument Sans', system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(idx+1), px, py+0.5);
+    });
+    updateTable(q, used, missing);
+  }
+
+  // table
+  const tbody = document.getElementById("rows");
+  pts.forEach((p, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td><input type="checkbox" aria-label="Use endpoint ${i+1}" ${p.on?"checked":""}></td>` +
+      `<td class="pid">${i+1}</td>` +
+      `<td><input type="number" step="0.1" min="0" max="8" value="${p.x}" aria-label="Endpoint ${i+1} x"></td>` +
+      `<td><input type="number" step="0.1" min="0" max="8" value="${p.y}" aria-label="Endpoint ${i+1} y"></td>` +
+      `<td class="ro d">–</td><td class="ro pv">–</td>`;
+    const [cb, ix, iy] = tr.querySelectorAll("input");
+    cb.addEventListener("change", () => { p.on = cb.checked; draw(); });
+    const num = (el, key) => el.addEventListener("input", () => { const v = parseFloat(el.value); if (!isNaN(v)) { p[key] = v; draw(); } });
+    num(ix, "x"); num(iy, "y");
+    tbody.appendChild(tr);
+    p.row = tr;
+  });
+
+  const fmt = v => (v !== 0 && v < 1e-3) ? v.toExponential(2) : v.toFixed(4);
+  function updateTable(q, used, missing){
+    pts.forEach(p => {
+      p.row.classList.toggle("off", !p.on);
+      p.row.querySelector(".d").textContent = isFinite(p.dist) ? p.dist.toFixed(2) : "no obstacle";
+      p.row.querySelector(".pv").textContent = p.p.toFixed(3);
+    });
+    const qEl = document.getElementById("q"), qn = document.getElementById("qNote");
+    if (!used){ qEl.textContent = "–"; qn.textContent = "Check at least one endpoint."; return; }
+    qEl.textContent = fmt(q);
+    qn.textContent = `From ${used} endpoint${used>1?"s":""}, ln q = ${Math.log(q).toFixed(2)}.` +
+      (missing ? " No occupied cells, so only the random-noise floor remains." : "");
+  }
+
+  // sliders
+  const sig = document.getElementById("sig"), zh = document.getElementById("zh");
+  sig.addEventListener("input", () => { sigma = +sig.value; document.getElementById("sigO").textContent = sigma.toFixed(2); draw(); });
+  zh.addEventListener("input", () => { zhit = +zh.value; document.getElementById("zhO").textContent = zhit.toFixed(2); draw(); });
+
+  // canvas interaction
+  function toMap(e){
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left - PADL)/P*N, y = N - (e.clientY - r.top - PADT)/P*N;
+    return {x, y, inside: x>=0 && x<N && y>=0 && y<N};
+  }
+  const hov = document.getElementById("hover");
+  cv.addEventListener("mousemove", e => {
+    const m = toMap(e);
+    if (!m.inside){ hov.textContent = "Hover the map to read the field"; return; }
+    const cs = centers(), d = cs.length ? nearest(m.x, m.y, cs).d : Infinity;
+    hov.textContent = `x ${m.x.toFixed(2)}, y ${m.y.toFixed(2)}: dist ${isFinite(d)?d.toFixed(2):"–"} m, p ${lik(d).toFixed(3)}`;
+  });
+  cv.addEventListener("mouseleave", () => { hov.textContent = "Hover the map to read the field"; });
+  cv.addEventListener("click", e => {
+    const m = toMap(e); if (!m.inside) return;
+    const key = Math.floor(m.x)+","+Math.floor(m.y);
+    occ.has(key) ? occ.delete(key) : occ.add(key);
+    draw();
+  });
+
+  new ResizeObserver(resize).observe(document.getElementById("canvasBox"));
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+})();
+</script>
+</body>
+</html>
